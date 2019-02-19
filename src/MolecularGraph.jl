@@ -15,20 +15,6 @@ module MolecularGraph
         include("./util/iterator.jl")
     end
 
-    module Geometry
-        using Formatting
-        using LinearAlgebra
-        using StaticArrays
-
-        include("./geometry/interface.jl")
-
-        include("./geometry/coords2d.jl")
-        # include("./geometry/coords3d.jl")
-        # include("./geometry/coordsinternal.jl")
-        # include("./geometry/embed2d.jl")
-        # include("./geometry/embed3d.jl")
-    end
-
     module Graph
         using StaticArrays
         using ..Util
@@ -55,14 +41,25 @@ module MolecularGraph
         include("./graph/bipartite.jl")
         include("./graph/triangle.jl")
         include("./graph/clique.jl")
-        include("./graph/bridge.jl")
-        include("./graph/component.jl")
+        include("./graph/connectivity.jl")
         include("./graph/cycle.jl")
         include("./graph/planarity.jl")
 
         include("./graph/isomorphism/base.jl")
         include("./graph/isomorphism/cliquebased.jl")
         include("./graph/isomorphism/vf2.jl")
+    end
+
+    module Geometry
+        using Formatting
+        using LinearAlgebra
+        using StaticArrays
+
+        include("./geometry/interface.jl")
+
+        include("./geometry/coords2d.jl")
+        include("./geometry/coords3d.jl")
+        include("./geometry/coordsinternal.jl")
     end
 
     using LinearAlgebra
@@ -108,6 +105,8 @@ module MolecularGraph
     include("./draw/base.jl")
     include("./draw/draw2d.jl")
     include("./draw/svg.jl")
+    include("./draw/embed2d.jl")
+    # include("embed3d.jl")
 
     include("download.jl")
     include("sdfilereader.jl")

@@ -10,6 +10,7 @@ module UtilTest
     include("./util/iterator.jl")
 end
 
+
 module GeometryTest
     using Test
     using LinearAlgebra
@@ -18,9 +19,10 @@ module GeometryTest
     using MolecularGraph.Geometry
 
     include("./geometry/coords2d.jl")
-    # include("./geometry/embed2d.jl")
+    include("./geometry/coords3d.jl")
+    include("./geometry/coordsinternal.jl")
 end
-"""
+
 
 module GraphTest
     using Test
@@ -44,8 +46,7 @@ module GraphTest
     include("./graph/triangle.jl")
     include("./graph/clique.jl")
     include("./graph/bipartite.jl")
-    include("./graph/bridge.jl")
-    include("./graph/component.jl")
+    include("./graph/connectivity.jl")
     include("./graph/cycle.jl")
     include("./graph/modularproduct.jl")
     include("./graph/isomorphism/vf2.jl")
@@ -53,6 +54,7 @@ module GraphTest
 end
 
 """
+
 module MolecularGraphTest
     using Test
     using StaticArrays
@@ -60,6 +62,9 @@ module MolecularGraphTest
     using MolecularGraph.Geometry
     using MolecularGraph.Graph
 
+    include("./draw/embed2d.jl")
+
+    """
     include("./model/atom.jl")
     include("./model/molgraph.jl")
 
@@ -87,5 +92,5 @@ module MolecularGraphTest
 
     include("./draw/base.jl")
     include("./draw/svg.jl")
+    """
 end
-"""
