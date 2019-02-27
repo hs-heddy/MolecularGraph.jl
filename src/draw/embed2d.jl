@@ -15,28 +15,42 @@ using MolecularGraph.Geometry: _angle
 Compute 2D coordinates of the molecular graph.
 """
 function compute2dcoords(mol::VectorMol)
-    # TODO: merge and layout connected components
-    # TODO: special cases: macrocycle
-    # TODO: special cases: organometals and hypervalent
     # TODO: kekurize
+
+    # Initial coordinates
     if is_outerplanar(mol)
         coords = outerplanar_embed2d(mol)
     else
-        throw(ErrorException("Cartesian embedding is not implemented yet"))
-        """
-        (blocks, cutvertices) = blocks_cutvertices(mol)
-        cartesianblocks = []
-        for b in blocks
-            blocksubg = nodesubgraph(b)
-            if !is_outerplanar(mol)
-                push!(cartesianblocks, cartesian_embed2d(blocksubg))
+        noprings = Set{Int}()
+        nopnodes = Set{Int}()
+        wd = sssrweakdual(mol)
+        for bcon in biconnected_components(wd)
+            for r in bcon
+                push!(noprings, r)
+                union!(nopnodes, mol.annotation[:Topology].rings[r])
             end
         end
-        coords = outerplanar_embed2d(mol, cartesianblocks)
-        """
+        rset = Set(1:length(mol.annotation[:Topology].rings))
+        oprings = setdiff(rset, noprings)
+        opnodes = union(mol.annotation[:Topology].rings[r] for r in oprings)
+        setdiff!(nopnodes, opnodes)
+        # TODO: pending
+        coords = outerplanar_embed2d(mol, pending=nopnodes)
+        for r in noprings
+            nodes = mol.annotation[:Topology].rings[r]
+            # TODO: 2D embedding based on graph distance
+            embedding = graphdistembedding(nodesubgraph(nodes))
+            # TODO: assign graph dist emmbedding to the outerplanar embedding
+            assign_cartesian2d!(coords, embedding)
+        end
     end
+    # so far, init coords and constraints (which nodes are fixed) are determined
 
-    # TODO: Boundary check and avoid overlap
+    # TODO: apply chain geometry constraints (some rotations)
+    # TODO: apply macrocycle constraints (add constraint and generate conformers)
+    # TODO: generate conformers and evaluate
+    # TODO: conformation optimization
+    # TODO: force directed optimization
     return cartesian2d(coords)
 end
 
@@ -73,12 +87,10 @@ end
 
 
 """
-    outerplanar_embed2d(mol::VecterMol) -> InternalCoords
+    outerplanar_embed2d(mol::VecterMol) -> Cartesian2D
 
-Return a 2D embedding of the outerplanar graph.
-
-An initial state of 2D embedding of an outerplanar molecular graph can be
-determined by a DFS based algorithm.
+Compute 2D embedding of the outerplanar graph which can be determined by a
+simple DFS based algorithm.
 """
 function outerplanar_embed2d(mol::G) where {G<:VectorMol}
     root = pop!(nodekeys(mol))
@@ -227,10 +239,41 @@ end
 
 
 """
-    cartesian_embed2d(graph::UDGraph; kwargs...) -> Cartesian2D
+    sssrweakdual(mol::VectorMol) -> MultiUDGraph
 
-Cartesian 2D embedding
+Compute a weak dual whose planar embedding represents SSSR.
 """
-function cartesian_embed2d(graph)
+function sssrweakdual(mol::VectorMol)
+    rcnt = length(state.mol.annotation[:Topology].rings)
+    wd = MultiUDGraph(1:rcnt, [])
+    ecnt = 0
+    for mem in mol[:RingBondMem]
+        length(mem) == 2 || continue
+        memc = collect(mem)
+        ecnt += 1
+        updateedge!(wd, memc[1], memc[2], ecnt)
+    end
+    return wd
+end
 
+
+"""
+    graphdistembedding(graph::UDGraph; kwargs...) -> Cartesian2D
+
+Compute 2D embedding based on the graph distance.
+"""
+function graphdistembedding(graph::UDGraph)
+    n = nodecount(mol)
+    # TODO: adjacencymatrix
+    D = adjacencymatrix(graph)
+    H = LinearAlgebra.I - fill(1 / n, (n, n))
+    G = - 0.5 * H * D * H # Gram matrix
+    F = LinearAlgebra.eigen(G)
+    od = sortperm(F.values)
+    xidx = findall(i -> i == 1, od)
+    yidx = findall(i -> i == 2, od)
+    coords = zeros(n, 2)
+    coords[:, 1] = F.vectors[:, xidx] * sqrt(F.values[xidx])
+    coords[:, 2] = F.vectors[:, yidx] * sqrt(F.values[yidx])
+    return Cartesian2D(coords)
 end
