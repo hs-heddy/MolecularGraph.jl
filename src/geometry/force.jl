@@ -42,13 +42,31 @@ mutable struct ForceDirectedState{G<:UDGraph}
 end
 
 
+mutable struct ForceConstraints
+    angle::Vector{Tuple{Int,Int,Int,Float64}} # center, end1, end2, cos(angle)
+
+    function Constraints(graph, cycles, cycleedgesets)
+        angles = Tuple{Int,Int,Int,Float64}[]
+        for n in nodekeys(graph)
+            for ((a, ea), (b, eb)) in combinations(neighbors(graph, n))
+                c = intersect(cycleedgesets[ea], cycleedgesets[eb])
+                size = length(cycles[pop!(c)])
+                push!(consts, (n, a, b, cos(pi - 2pi / size))
+            end
+        end
+        new(angles)
+    end
+end
+
 
 """
     forcedirected(graph::UDGraph) -> Cartesian2D
 
 Compute 2D embedding based on the graph distance.
 """
-function Geometry.forcedirected(graph::G, init::Cartesian2D) where {G<:UDGraph}
+function Geometry.forcedirected(
+        graph::G, init::Cartesian2D, constraints::ForceConstraints
+        ) where {G<:UDGraph}
     state = ForceDirectedState{G}(graph, init)
     t = state.tick
     for i in 1:state.maxiter
@@ -72,7 +90,6 @@ function Geometry.forcedirected(graph::G, init::Cartesian2D) where {G<:UDGraph}
                 factor = (norm(pnbr - p1) - state.stdlength) * state.spring
                 force += factor * normalize(pnbr - p1)
             end
-            """
             # Hinge constraint
             for (a, b) in combinations(neighbors(graph, n1))
                 pa = state.coords[a, :]
@@ -80,7 +97,6 @@ function Geometry.forcedirected(graph::G, init::Cartesian2D) where {G<:UDGraph}
                 factor = (interiorangle(pa, pb) - state.stdangle) * state.hinge
                 force += factor * normalize(p2 - p1)
             end
-            """
             state.velo[n1, :] += (state.force[n1, :] + force) / 2 * t
             state.force[n1, :] = force
             energy += norm(state.force[n1, :])
