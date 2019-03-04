@@ -4,7 +4,8 @@
 #
 
 export
-    rawdata, setcoord!, cartesian2d, point, segment, cyclicpath,
+    Point2D, Segment2D, PointSet2D, CyclicPath2D,
+    rawdata, setcoord!, cartesian2d, point, segment, pointset, cyclicpath,
     x, y, u, v, ux, uy, vx, vy,
     x_components, y_components,
     vector, interiorangle, translate,
@@ -25,6 +26,12 @@ struct Segment2D
     coords::Matrix{Float64}
     u::Int
     v::Int
+end
+
+
+struct PointSet2D
+    coords::Matrix{Float64}
+    nodes::Vector{Int}
 end
 
 
@@ -82,6 +89,9 @@ point(x::Float64, y::Float64) = Point2D([x y], 1)
 
 segment(coords::Cartesian2D, u, v) = Segment2D(rawdata(coords), u, v)
 segment(coords::Matrix{Float64}) = Segment2D(coords, 1, 2)
+
+pointset(coords::Cartesian2D, nodes) = PointSet2D(rawdata(coords), nodes)
+pointset(coords::Matrix{Float64}) = PointSet2D(coords, 1:size(coords, 1))
 
 cyclicpath(coords::Cartesian2D, nodes) = CyclicPath2D(rawdata(coords), nodes)
 cyclicpath(coords::Matrix{Float64}) = CyclicPath2D(coords, 1:size(coords, 1))

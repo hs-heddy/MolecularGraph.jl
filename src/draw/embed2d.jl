@@ -4,9 +4,9 @@
 #
 
 export
-    compute2dcoords
-
-using MolecularGraph.Geometry: _angle
+    compute2dcoords,
+    outerplanar_embed2d,
+    sssrweakdual
 
 
 """
@@ -21,28 +21,25 @@ function compute2dcoords(mol::VectorMol)
     if is_outerplanar(mol)
         coords = outerplanar_embed2d(mol)
     else
-        noprings = Set{Int}()
-        nopnodes = Set{Int}()
+        nopcomps = Set{Set{Int}}()
+        # Extract non-outerplanar components
         wd = sssrweakdual(mol)
         for bcon in biconnected_components(wd)
+            nodes = Set{Int}()
             for r in bcon
-                push!(noprings, r)
-                union!(nopnodes, mol.annotation[:Topology].rings[r])
+                union!(nodes, mol.annotation[:Topology].rings[r])
             end
+            push!(nopcomps, nodes)
         end
-        rset = Set(1:length(mol.annotation[:Topology].rings))
-        oprings = setdiff(rset, noprings)
-        opnodes = union(mol.annotation[:Topology].rings[r] for r in oprings)
-        setdiff!(nopnodes, opnodes)
-        # TODO: pending
-        coords = outerplanar_embed2d(mol, pending=nopnodes)
-        for r in noprings
-            nodes = mol.annotation[:Topology].rings[r]
-            # TODO: 2D embedding based on graph distance
-            embedding = graphdistembedding(nodesubgraph(nodes))
-            # TODO: assign graph dist emmbedding to the outerplanar embedding
-            assign_cartesian2d!(coords, embedding)
+        # Graph distance based 2D cartesian embedding
+        embeddings = PointSet2D[]
+        for nop in nopcomps
+            emb = graphdistembedding(nodesubgraph(nop))
+            # TODO: force directed optimization
+            push!(embeddings, emb)
         end
+        # Combine outerplanar embedding and cartesian embedding
+        coords = outerplanar_embed2d(mol, fixed=embeddings)
     end
     # so far, init coords and constraints (which nodes are fixed) are determined
 
@@ -58,6 +55,7 @@ end
 
 struct OuterplanarEmbed2DState{G<:VectorMol}
     mol::G
+    fixed::Vector{PointSet2D}
 
     dfsindex::Dict{Int,Int} # node index, dfs tree index
     pred::Dict{Int,Int}
@@ -69,7 +67,7 @@ struct OuterplanarEmbed2DState{G<:VectorMol}
 
     coords::InternalCoords
 
-    function OuterplanarEmbed2DState{G}(mol, root) where {G<:VectorMol}
+    function OuterplanarEmbed2DState{G}(mol, fixed, root) where {G<:VectorMol}
         coords = internalcoords(nodecount(mol) + 3)
         # Set dummy nodes
         setcoord!(coords, 2, [1, nothing, nothing], [1.0, nothing, nothing])
@@ -81,7 +79,7 @@ struct OuterplanarEmbed2DState{G<:VectorMol}
         flip = Dict(root => false)
         bcnt = Dict(-1 => 1)
         bidx = Dict(root => 1)
-        new(mol, idx, pred, geo, cw, flip, bcnt, bidx, coords)
+        new(mol, fixed, idx, pred, geo, cw, flip, bcnt, bidx, coords)
     end
 end
 
@@ -92,9 +90,9 @@ end
 Compute 2D embedding of the outerplanar graph which can be determined by a
 simple DFS based algorithm.
 """
-function outerplanar_embed2d(mol::G) where {G<:VectorMol}
+function outerplanar_embed2d(mol::G, fixed=[]) where {G<:VectorMol}
     root = pop!(nodekeys(mol))
-    state = OuterplanarEmbed2DState{G}(mol, root)
+    state = OuterplanarEmbed2DState{G}(mol, fixed, root)
     dfs!(state, root)
     for (n, i) in state.dfsindex
         n > 0 && (state.coords.nodekeys[i] = n)
@@ -116,6 +114,8 @@ function dfs!(state::OuterplanarEmbed2DState, n::Int)
     bcnt = state.branchcount[p1]
     rmem = collect(get(state.mol[:RingMem], p1, Set{Int}()))
     ringsize = r -> length(state.mol.annotation[:Topology].rings[r])
+    # TODO: cartesian to internalcoords
+    # TODO: If it starts from ring node, block entry point should be more simple
     if length(rmem) == 0
         # chain -> chain
         if bcnt == 1
@@ -187,6 +187,7 @@ function dfs!(state::OuterplanarEmbed2DState, n::Int)
             continue # visited
         elseif length(state.mol[:RingBondMem][bond]) > 1
             continue # not Hamiltonian path
+            # TODO: if nonouterplanar, add same ring node
         elseif state.mol[:RingBond][bond]
             m = pop!(collect(state.mol[:RingBondMem][bond]))
             m in keys(bin) || (bin[m] = Set{Tuple{Int,Int}}())
@@ -224,6 +225,7 @@ function dfs!(state::OuterplanarEmbed2DState, n::Int)
         state.geometry[nbr] = :spiro
         dfs!(state, nbr)
     end
+    # TODO: cartesian embedded
     # Chains
     for (i, (nbr, bond)) in enumerate(chains)
         state.clockwise[nbr] = true
@@ -254,26 +256,4 @@ function sssrweakdual(mol::VectorMol)
         updateedge!(wd, memc[1], memc[2], ecnt)
     end
     return wd
-end
-
-
-"""
-    graphdistembedding(graph::UDGraph; kwargs...) -> Cartesian2D
-
-Compute 2D embedding based on the graph distance.
-"""
-function graphdistembedding(graph::UDGraph)
-    n = nodecount(mol)
-    # TODO: adjacencymatrix
-    D = adjacencymatrix(graph)
-    H = LinearAlgebra.I - fill(1 / n, (n, n))
-    G = - 0.5 * H * D * H # Gram matrix
-    F = LinearAlgebra.eigen(G)
-    od = sortperm(F.values)
-    xidx = findall(i -> i == 1, od)
-    yidx = findall(i -> i == 2, od)
-    coords = zeros(n, 2)
-    coords[:, 1] = F.vectors[:, xidx] * sqrt(F.values[xidx])
-    coords[:, 2] = F.vectors[:, yidx] * sqrt(F.values[yidx])
-    return Cartesian2D(coords)
 end

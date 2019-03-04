@@ -54,12 +54,15 @@ module MolecularGraph
         using Formatting
         using LinearAlgebra
         using StaticArrays
+        using ..Graph
 
         include("./geometry/interface.jl")
 
         include("./geometry/coords2d.jl")
         include("./geometry/coords3d.jl")
         include("./geometry/coordsinternal.jl")
+        include("./geometry/embedding.jl")
+        include("./geometry/force.jl")
     end
 
     using LinearAlgebra

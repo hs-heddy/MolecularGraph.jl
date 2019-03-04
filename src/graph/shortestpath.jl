@@ -5,7 +5,7 @@
 
 export
     shortestpath,
-    distance,
+    distance, distancematrix,
     eccentricity, diameter,
     longestshortestpath,
     reachablenodes, pathlength, backtrack
@@ -45,9 +45,10 @@ end
 
 
 """
-    distance(graph::UDGraph, root) -> Dict{Int,Int}
+    distance(graph::UDGraph, root) -> Dict{Int,Union{Int,Nothing}}
 
-Compute the distance from `root` to any other nodes.
+Compute the distance from `root` to any other nodes. If the nodes are not
+reachable each other, the value will be `nothing`.
 """
 function distance(graph::UDGraph, root)
     queue = [root]
@@ -62,6 +63,26 @@ function distance(graph::UDGraph, root)
         end
     end
     return dist
+end
+
+
+"""
+    distancematrix(graph::UDGraph) -> Matrix{Float64}
+
+Compute the distance among each other nodes.
+
+Note that the type of the generated matrix will be `Float64`. If the nodes are
+not reachable each other, the distance value will be `Inf`.
+"""
+function distancematrix(graph::UDGraph)
+    ncnt = nodecount(graph)
+    distmat = zeros((ncnt, ncnt))
+    for s in nodekeys(graph) # TODO: should be ordered
+        for (t, d) in distance(graph, s)
+            distmat[s, t] = d === nothing ? Inf : d
+        end
+    end
+    return distmat
 end
 
 
