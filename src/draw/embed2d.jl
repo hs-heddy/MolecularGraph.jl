@@ -31,12 +31,17 @@ function compute2dcoords(mol::VectorMol)
             end
             push!(nopcomps, nodes)
         end
-        # Graph distance based 2D cartesian embedding
+        # Graph distance based cartesian embedding
         embeddings = PointSet2D[]
         for nop in nopcomps
-            emb = graphdistembedding(nodesubgraph(nop))
-            # TODO: force directed optimization
-            push!(embeddings, emb)
+            subg = nodesubgraph(nop)
+            graphem = graphdistembedding(subg)
+            constraint = ForceConstraints(mol[:RingSize])
+            if graphem isa Cartesian2D
+                push!(embeddings, forcedirected2d(subg, graphem, constraint))
+            elseif graphem isa Cartesian3D
+                push!(embeddings, forcedirected3d(subg, graphem, constraint))
+            end
         end
         # Combine outerplanar embedding and cartesian embedding
         coords = outerplanar_embed2d(mol, fixed=embeddings)

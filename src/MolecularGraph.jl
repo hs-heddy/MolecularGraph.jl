@@ -54,6 +54,7 @@ module MolecularGraph
         using Formatting
         using LinearAlgebra
         using StaticArrays
+        using ..Util
         using ..Graph
 
         include("./geometry/interface.jl")
