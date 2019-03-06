@@ -9,6 +9,18 @@ export
     sssrweakdual
 
 
+struct Embed2DConstraints
+    groups::Vector{Tuple{Vector{Int}, Coordinates}}
+
+    Embed2DConstraints() = new([])
+end
+
+
+function addgroupconstraint!(con::Embed2DConstraints, keys::Vector{Int},
+                             coords::Coordinates)
+    push!(con.groups, (keys, coords))
+end
+
 """
     compute2dcoords(mol::MolGraph) -> InternalCoordinates
 
@@ -32,19 +44,23 @@ function compute2dcoords(mol::VectorMol)
             push!(nopcomps, nodes)
         end
         # Graph distance based cartesian embedding
-        embeddings = PointSet2D[]
+        econ = Embed2DConstraints()
         for nop in nopcomps
             subg = nodesubgraph(nop)
             graphem = graphdistembedding(subg)
-            constraint = ForceConstraints(mol[:RingSize])
+            constraints = ForceConstraints(mol[:RingSize])
             if graphem isa Cartesian2D
-                push!(embeddings, forcedirected2d(subg, graphem, constraint))
+                addgroupconstraint!(
+                    econ, nodekeys(subg),
+                    forcedirected2d(subg, graphem, constraint))
             elseif graphem isa Cartesian3D
-                push!(embeddings, forcedirected3d(subg, graphem, constraint))
+                addgroupconstraint!(
+                    econ, nodekeys(subg),
+                    forcedirected3d(subg, graphem, constraint))
             end
         end
         # Combine outerplanar embedding and cartesian embedding
-        coords = outerplanar_embed2d(mol, fixed=embeddings)
+        coords = outerplanar_embed2d(mol, constraints=constraints)
     end
     # so far, init coords and constraints (which nodes are fixed) are determined
 
@@ -95,7 +111,7 @@ end
 Compute 2D embedding of the outerplanar graph which can be determined by a
 simple DFS based algorithm.
 """
-function outerplanar_embed2d(mol::G, fixed=[]) where {G<:VectorMol}
+function outerplanar_embed2d(mol::G, constraints=con::Constraints) where {G<:VectorMol}
     root = pop!(nodekeys(mol))
     state = OuterplanarEmbed2DState{G}(mol, fixed, root)
     dfs!(state, root)
