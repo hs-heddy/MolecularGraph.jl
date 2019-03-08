@@ -69,6 +69,7 @@ function compute2dcoords(mol::VectorMol)
     # TODO: generate conformers and evaluate
     # TODO: conformation optimization
     # TODO: force directed optimization
+    # TODO: place molecules
     return cartesian2d(coords)
 end
 
@@ -135,9 +136,11 @@ function dfs!(state::OuterplanarEmbed2DState, n::Int)
     bcnt = state.branchcount[p1]
     rmem = collect(get(state.mol[:RingMem], p1, Set{Int}()))
     ringsize = r -> length(state.mol.annotation[:Topology].rings[r])
-    # TODO: cartesian to internalcoords
     # TODO: If it starts from ring node, block entry point should be more simple
-    if length(rmem) == 0
+    if state.geometry[n] == :fixed
+        angle = interiorangle(coords[p2-p1], coords[n-p1])
+        dihedral = state.flip[n] ? 1.0 : 0.0
+    elseif length(rmem) == 0
         # chain -> chain
         if bcnt == 1
             # 1.0 is invalid (sp orbital cases)
@@ -198,63 +201,58 @@ function dfs!(state::OuterplanarEmbed2DState, n::Int)
     end
     setcoord!(state.coords, i_n, [i1, i2, i3], [1.0, angle, dihedral])
 
-    # Node priority (block -> spiro -> chains)
-    bin = Dict{Int,Set{Tuple{Int,Int}}}()
-    block = Tuple{Int,Int}[]
-    spiro = Tuple{Int,Int}[]
-    chains = Tuple{Int,Int}[]
+    # Node priority (block -> spiro -> fixed -> chains)
+    bin = Dict{Int,Set{Int}}()
+    pqueue = Tuple{Int,Symbol,Int}[]
+    spiro = Tuple{Int,Symbol,Int}[]
+    fixed = Tuple{Int,Symbol,Int}[]
+    chains = Tuple{Int,Symbol,Int}[]
+    chaincnt = 1
     for (nbr, bond) in neighbors(state.mol, n)
         if nbr in keys(state.dfsindex)
             continue # visited
+        elseif length(state.mol[:RingBondMem][bond]) == 1 || (nbr in constraints.group
+                && intersect(state.mol[:RingMem][n], state.mol[:RingMem][nbr]) > 1)
+            m = pop!(state.mol[:RingBondMem][bond])
+            m in keys(bin) || (bin[m] = Set{Tuple{Int,Int}}())
+            push!(bin[m], nbr)
+        elseif nbr in constraints.group
+            push!(fixed, (nbr, :fixed, 0)) # Fixed coord
         elseif length(state.mol[:RingBondMem][bond]) > 1
             continue # not Hamiltonian path
-            # TODO: if nonouterplanar, add same ring node
-        elseif state.mol[:RingBond][bond]
-            m = pop!(collect(state.mol[:RingBondMem][bond]))
-            m in keys(bin) || (bin[m] = Set{Tuple{Int,Int}}())
-            push!(bin[m], (nbr, bond))
         else
-            push!(chains, (nbr, bond))
+            push!(chains, (nbr, :chain, chaincnt))
+            chaincnt += 1
         end
     end
     for b in values(bin)
         if length(b) == 1
-            push!(block, pop!(b))
+            push!(pqueue, (pop!(b), :block, 0))
         elseif length(b) == 2
-            push!(spiro, pop!(b))
+            push!(spiro, (pop!(b), :spiro, 0))
         end
     end
+    append!(pqueue, spiro)
+    append!(pqueue, chains)
 
-    # Block
-    state.branchcount[n] = length(chains)
-    if !isempty(block)
-        (nbr, bond) = pop!(block)
-        state.clockwise[nbr] = (state.geometry[n] == :chain
-            || state.mol[:RingMemCount][n] == 2)
-        state.flip[nbr] = state.clockwise[nbr] == state.clockwise[n]
-        state.pred[nbr] = n
-        state.geometry[nbr] = :block
-        dfs!(state, nbr)
-    end
-    # Spiro
-    if !isempty(spiro)
-        (nbr, bond) = pop!(spiro)
-        state.clockwise[nbr] = (state.geometry[n] == :chain
-            || state.mol[:RingMemCount][n] == 2)
-        state.flip[nbr] = state.clockwise[nbr] == state.clockwise[n]
-        state.pred[nbr] = n
-        state.geometry[nbr] = :spiro
-        dfs!(state, nbr)
-    end
-    # TODO: cartesian embedded
-    # Chains
-    for (i, (nbr, bond)) in enumerate(chains)
-        state.clockwise[nbr] = true
-        state.flip[nbr] = (state.geometry[n] == :chain
-            ? false : state.clockwise[nbr] == state.clockwise[n])
+    # Determine direction and move to next node
+    for (nbr, geo, bidx) in pqueue
         state.pred[nbr] = n
         state.geometry[nbr] = :chain
-        state.branchindex[nbr] = i
+        if geo == :chain
+            state.clockwise[nbr] = true
+            state.flip[nbr] = (state.geometry[n] == :chain
+                ? false : state.clockwise[nbr] == state.clockwise[n])
+            state.branchindex[nbr] = bidx
+        elseif geo == :fixed
+            state.clockwise[nbr] = (state.geometry[n] == :fixed
+                ? cross(coords[n] - coords[p1], coords[nbr] - coords[n]) >= 0 : true)
+            state.flip[nbr] = state.clockwise[nbr] == state.clockwise[n]
+        else
+            state.clockwise[nbr] = (state.geometry[n] == :chain
+                || state.mol[:RingMemCount][n] == 2)
+            state.flip[nbr] = state.clockwise[nbr] == state.clockwise[n]
+        end
         dfs!(state, nbr)
     end
 
