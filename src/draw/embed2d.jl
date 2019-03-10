@@ -21,6 +21,7 @@ function addgroupconstraint!(con::Embed2DConstraints, keys::Vector{Int},
     push!(con.groups, (keys, coords))
 end
 
+
 """
     compute2dcoords(mol::MolGraph) -> InternalCoordinates
 
@@ -52,11 +53,11 @@ function compute2dcoords(mol::VectorMol)
             if graphem isa Cartesian2D
                 addgroupconstraint!(
                     econ, nodekeys(subg),
-                    forcedirected2d(subg, graphem, constraint))
+                    forcedirected2d(subg, graphem, constraints))
             elseif graphem isa Cartesian3D
                 addgroupconstraint!(
                     econ, nodekeys(subg),
-                    forcedirected3d(subg, graphem, constraint))
+                    forcedirected3d(subg, graphem, constraints))
             end
         end
         # Combine outerplanar embedding and cartesian embedding
@@ -77,7 +78,7 @@ end
 
 struct OuterplanarEmbed2DState{G<:VectorMol}
     mol::G
-    fixed::Vector{PointSet2D}
+    constraints::Embed2DConstraints
 
     dfsindex::Dict{Int,Int} # node index, dfs tree index
     pred::Dict{Int,Int}
@@ -89,7 +90,7 @@ struct OuterplanarEmbed2DState{G<:VectorMol}
 
     coords::InternalCoords
 
-    function OuterplanarEmbed2DState{G}(mol, fixed, root) where {G<:VectorMol}
+    function OuterplanarEmbed2DState{G}(mol, constraints, root) where {G<:VectorMol}
         coords = internalcoords(nodecount(mol) + 3)
         # Set dummy nodes
         setcoord!(coords, 2, [1, nothing, nothing], [1.0, nothing, nothing])
@@ -101,7 +102,7 @@ struct OuterplanarEmbed2DState{G<:VectorMol}
         flip = Dict(root => false)
         bcnt = Dict(-1 => 1)
         bidx = Dict(root => 1)
-        new(mol, fixed, idx, pred, geo, cw, flip, bcnt, bidx, coords)
+        new(mol, constraints, idx, pred, geo, cw, flip, bcnt, bidx, coords)
     end
 end
 
@@ -112,9 +113,11 @@ end
 Compute 2D embedding of the outerplanar graph which can be determined by a
 simple DFS based algorithm.
 """
-function outerplanar_embed2d(mol::G, constraints=con::Constraints) where {G<:VectorMol}
+function outerplanar_embed2d(
+        mol::G, constraints=Embed2DConstraints()::Embed2DConstraints
+        ) where {G<:VectorMol}
     root = pop!(nodekeys(mol))
-    state = OuterplanarEmbed2DState{G}(mol, fixed, root)
+    state = OuterplanarEmbed2DState{G}(mol, constraints, root)
     dfs!(state, root)
     for (n, i) in state.dfsindex
         n > 0 && (state.coords.nodekeys[i] = n)
@@ -138,8 +141,14 @@ function dfs!(state::OuterplanarEmbed2DState, n::Int)
     ringsize = r -> length(state.mol.annotation[:Topology].rings[r])
     # TODO: If it starts from ring node, block entry point should be more simple
     if state.geometry[n] == :fixed
-        angle = interiorangle(coords[p2-p1], coords[n-p1])
+        if state.geometry[p1] != :fixed
+            angle =
+        else
+            angle = interiorangle(coords[p2-p1], coords[n-p1])
+        end
         dihedral = state.flip[n] ? 1.0 : 0.0
+    elseif state.geometry[p1] == :fixed
+        
     elseif length(rmem) == 0
         # chain -> chain
         if bcnt == 1
