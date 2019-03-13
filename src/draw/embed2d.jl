@@ -127,6 +127,64 @@ end
 
 
 function dfs!(state::OuterplanarEmbed2DState, n::Int)
+    # Node priority (block -> spiro -> fixed -> chains)
+    bin = Dict{Int,Set{Int}}()
+    pqueue = Tuple{Int,Symbol,Int}[]
+    spiro = Tuple{Int,Symbol,Int}[]
+    fixed = Tuple{Int,Symbol,Int}[]
+    chains = Tuple{Int,Symbol,Int}[]
+    chaincnt = 1
+    for (nbr, bond) in neighbors(state.mol, n)
+        if nbr in keys(state.dfsindex)
+            continue # visited
+        elseif length(state.mol[:RingBondMem][bond]) == 1 || (nbr in constraints.group
+                && intersect(state.mol[:RingMem][n], state.mol[:RingMem][nbr]) > 1)
+            m = pop!(state.mol[:RingBondMem][bond])
+            m in keys(bin) || (bin[m] = Set{Tuple{Int,Int}}())
+            push!(bin[m], nbr)
+        elseif nbr in constraints.group
+            push!(fixed, (nbr, :fixed, 0)) # Fixed coord
+        elseif length(state.mol[:RingBondMem][bond]) > 1
+            continue # not Hamiltonian path
+        else
+            push!(chains, (nbr, :chain, chaincnt))
+            chaincnt += 1
+        end
+    end
+    for b in values(bin)
+        if length(b) == 1
+            push!(pqueue, (pop!(b), :block, 0))
+        elseif length(b) == 2
+            push!(spiro, (pop!(b), :spiro, 0))
+        end
+    end
+    append!(pqueue, spiro)
+    append!(pqueue, chains)
+
+    # Determine direction and move to next node
+    for (nbr, geo, bidx) in pqueue
+        state.pred[nbr] = n
+        state.geometry[nbr] = geo
+        if geo == :chain
+            state.clockwise[nbr] = !state.clockwise[n]
+        elseif geo == :fixed
+            if state.geometry[n] == :fixed
+                state.clockwise[nbr] = cross(coords[n] - coords[p1], coords[nbr] - coords[n]) >= 0
+            else
+                state.clockwise[nbr] = !state.clockwise[n]
+            end
+        else
+            state.clockwise[nbr] = (state.geometry[n] == :chain
+                || state.mol[:RingMemCount][n] == 2)
+        end
+        state.branchindex[nbr] = bidx
+        state.flip[nbr] = state.clockwise[nbr] == state.clockwise[n]
+        dfs!(state, nbr)
+    end
+end
+
+
+function calccoords!(state::OuterplanarEmbed2DState, n:Int)
     state.dfsindex[n] = length(state.dfsindex) + 1
     p1 = state.pred[n]
     p2 = state.pred[p1]
@@ -148,7 +206,7 @@ function dfs!(state::OuterplanarEmbed2DState, n::Int)
         end
         dihedral = state.flip[n] ? 1.0 : 0.0
     elseif state.geometry[p1] == :fixed
-        
+
     elseif length(rmem) == 0
         # chain -> chain
         if bcnt == 1
@@ -209,62 +267,6 @@ function dfs!(state::OuterplanarEmbed2DState, n::Int)
         end
     end
     setcoord!(state.coords, i_n, [i1, i2, i3], [1.0, angle, dihedral])
-
-    # Node priority (block -> spiro -> fixed -> chains)
-    bin = Dict{Int,Set{Int}}()
-    pqueue = Tuple{Int,Symbol,Int}[]
-    spiro = Tuple{Int,Symbol,Int}[]
-    fixed = Tuple{Int,Symbol,Int}[]
-    chains = Tuple{Int,Symbol,Int}[]
-    chaincnt = 1
-    for (nbr, bond) in neighbors(state.mol, n)
-        if nbr in keys(state.dfsindex)
-            continue # visited
-        elseif length(state.mol[:RingBondMem][bond]) == 1 || (nbr in constraints.group
-                && intersect(state.mol[:RingMem][n], state.mol[:RingMem][nbr]) > 1)
-            m = pop!(state.mol[:RingBondMem][bond])
-            m in keys(bin) || (bin[m] = Set{Tuple{Int,Int}}())
-            push!(bin[m], nbr)
-        elseif nbr in constraints.group
-            push!(fixed, (nbr, :fixed, 0)) # Fixed coord
-        elseif length(state.mol[:RingBondMem][bond]) > 1
-            continue # not Hamiltonian path
-        else
-            push!(chains, (nbr, :chain, chaincnt))
-            chaincnt += 1
-        end
-    end
-    for b in values(bin)
-        if length(b) == 1
-            push!(pqueue, (pop!(b), :block, 0))
-        elseif length(b) == 2
-            push!(spiro, (pop!(b), :spiro, 0))
-        end
-    end
-    append!(pqueue, spiro)
-    append!(pqueue, chains)
-
-    # Determine direction and move to next node
-    for (nbr, geo, bidx) in pqueue
-        state.pred[nbr] = n
-        state.geometry[nbr] = :chain
-        if geo == :chain
-            state.clockwise[nbr] = true
-            state.flip[nbr] = (state.geometry[n] == :chain
-                ? false : state.clockwise[nbr] == state.clockwise[n])
-            state.branchindex[nbr] = bidx
-        elseif geo == :fixed
-            state.clockwise[nbr] = (state.geometry[n] == :fixed
-                ? cross(coords[n] - coords[p1], coords[nbr] - coords[n]) >= 0 : true)
-            state.flip[nbr] = state.clockwise[nbr] == state.clockwise[n]
-        else
-            state.clockwise[nbr] = (state.geometry[n] == :chain
-                || state.mol[:RingMemCount][n] == 2)
-            state.flip[nbr] = state.clockwise[nbr] == state.clockwise[n]
-        end
-        dfs!(state, nbr)
-    end
-
 end
 
 
