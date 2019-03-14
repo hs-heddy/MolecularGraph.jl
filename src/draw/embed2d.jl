@@ -135,16 +135,20 @@ function dfs!(state::OuterplanarEmbed2DState, n::Int)
     chains = Tuple{Int,Symbol,Int}[]
     chaincnt = 1
     for (nbr, bond) in neighbors(state.mol, n)
+        rbmem = copy(state.mol[:RingBondMem][bond])
         if nbr in keys(state.dfsindex)
             continue # visited
-        elseif length(state.mol[:RingBondMem][bond]) == 1 || (nbr in constraints.group
+        if nbr in constraints.group
+            if intersect(state.mol[:RingMem][n], state.mol[:RingMem][nbr]) > 1
+        elseif length(rbmem) == 1 && !(nbr in constraints.group)
+            || (nbr in constraints.group
                 && intersect(state.mol[:RingMem][n], state.mol[:RingMem][nbr]) > 1)
-            m = pop!(state.mol[:RingBondMem][bond])
+            m = pop!(rbmem)
             m in keys(bin) || (bin[m] = Set{Tuple{Int,Int}}())
             push!(bin[m], nbr)
         elseif nbr in constraints.group
             push!(fixed, (nbr, :fixed, 0)) # Fixed coord
-        elseif length(state.mol[:RingBondMem][bond]) > 1
+        elseif length(rbmem) > 1
             continue # not Hamiltonian path
         else
             push!(chains, (nbr, :chain, chaincnt))
@@ -152,14 +156,11 @@ function dfs!(state::OuterplanarEmbed2DState, n::Int)
         end
     end
     for b in values(bin)
-        if length(b) == 1
-            push!(pqueue, (pop!(b), :block, 0))
-        elseif length(b) == 2
-            push!(spiro, (pop!(b), :spiro, 0))
-        end
+        push!(
+            leongth(b) == 1 ? pqueue : spiro,
+            (pop!(b), leongth(b) == 1 ? :block : :spiro, 0))
     end
-    append!(pqueue, spiro)
-    append!(pqueue, chains)
+    push!(pqueue, spiro..., fixed..., chains...)
 
     # Determine direction and move to next node
     for (nbr, geo, bidx) in pqueue
@@ -175,7 +176,7 @@ function dfs!(state::OuterplanarEmbed2DState, n::Int)
             end
         else
             state.clockwise[nbr] = (state.geometry[n] == :chain
-                || state.mol[:RingMemCount][n] == 2)
+                || state.mol[:RingMemCount][n] > 2)
         end
         state.branchindex[nbr] = bidx
         state.flip[nbr] = state.clockwise[nbr] == state.clockwise[n]
