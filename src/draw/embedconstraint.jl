@@ -19,7 +19,6 @@ end
 
 
 
-function addgroupconstraint!(con::Embed2DConstraints, keys::Vector{Int},
-                             coords::Coordinates)
+function groupconstraint!(con::Embed2DConstraints, coords::Coordinate2DSubset)
     push!(con.groups, (keys, coords))
 end

@@ -13,46 +13,40 @@ export
 
 Compute 2D coordinates of the molecular graph.
 """
-function compute2dcoords(mol::VectorMol)
+function compute2dcoords(mol::M) where {M<:VectorMol}
     # TODO: kekurize
 
     # Initial coordinates
-    chains = Set{PointSet}()
-    outerplanar = Set{PointSet}()
-    nonouterplanar = Set{PointSet}()
-    constraints = Embed2DConstraint()
+    Embed2DConstraints()
 
     # Decompose
-    for bcon in biconnected_components(mol)
-        wd = sssrweakdual(bcon)
-        for wbcon in biconnected_components(wd)
+    bconstate = BiconnectedState{M}(mol)
+    dfs!(bconstate)
+    for conn in connected_components(edgesubgraph(bconstate.bridges))
+        # Chains
+        dec = decompose_chain(nodesubgraph(conn), bconstate)
+        for chain in dec
+            emb = chain_embed(nodesubgraph(chain), mol[:Pi])
+            groupconstraint!(constraints, emb)
+        end
+    end
+    for biconn in biconnected
+        wd = sssrweakdual(nodesubgraph(biconn))
+        wdbcs = biconnected_components(wd)
+        # Non-outerplanar components
+        for wdbcs in wdbcs
             nodes = Set{Int}()
-            for r in bcon
+            for r in wdbc
                 union!(nodes, mol.annotation[:Topology].rings[r])
             end
-            push!(nonouterplanar, nodes)
+            groupconstraint!(constraints, cartesian_embed(mol, nodes))
         end
-        push!(outerplanar, outerplanar_embed2d(mol, nodes))
-    end
-
-    # Graph distance based cartesian embedding
-    econ = Embed2DConstraints()
-    for nop in nopcomps
-        subg = nodesubgraph(nop)
-        graphem = graphdistembedding(subg)
-        constraints = ForceConstraints(mol[:RingSize])
-        if graphem isa Cartesian2D
-            addgroupconstraint!(
-                econ, nodekeys(subg),
-                forcedirected2d(subg, graphem, constraints))
-        elseif graphem isa Cartesian3D
-            addgroupconstraint!(
-                econ, nodekeys(subg),
-                forcedirected3d(subg, graphem, constraints))
+        # Outerplanar components
+        for r in setdiff(nodekeys(wd), union(wdbcs...))
+            nodes = Set{Int}()
+            union!(nodes, mol.annotation[:Topology].rings[r])
+            groupconstraint!(constraints, outerplanar_embed(mol, nodes))
         end
-    end
-        # Combine outerplanar embedding and cartesian embedding
-        coords = outerplanar_embed2d(mol, constraints=constraints)
     end
 
     # so far, init coords and constraints (which nodes are fixed) are determined
@@ -72,7 +66,7 @@ end
 
 Compute a weak dual whose planar embedding represents SSSR.
 """
-function sssrweakdual(mol::VectorMol)
+function sssrweakdual(graph::UndirectedGraph)
     rcnt = length(state.mol.annotation[:Topology].rings)
     wd = MultiUDGraph(1:rcnt, [])
     ecnt = 0
