@@ -107,6 +107,11 @@ module MolecularGraph
     include("./draw/base.jl")
     include("./draw/draw2d.jl")
     include("./draw/svg.jl")
+    include("./draw/embed/outerplanar.jl")
+    include("./draw/embed/chain.jl")
+    include("./draw/embed/cartesian.jl")
+    include("./draw/embed/merge.jl")
+    include("./draw/embed/embed2d.jl")
 
     include("download.jl")
     include("sdfilereader.jl")
